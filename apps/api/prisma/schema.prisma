@@ -1,0 +1,287 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  TECHNICIAN
+  CUSTOMER
+  ADMINISTRADOR
+  OPERADOR
+  COMERCIAL
+  TECNICO
+  POS_VENDA
+}
+
+enum PlantStatus {
+  ACTIVE
+  INACTIVE
+  WARNING
+  OFFLINE
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(OPERATOR)
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+enum RecordStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum EquipmentType {
+  INVERSOR
+  DATALOGGER
+  GATEWAY
+  MEDIDOR
+  COMUNICACAO
+  OUTRO
+}
+
+model Customer {
+  id          String       @id @default(cuid())
+  name        String
+  document    String?      @unique
+  email       String?
+  phone       String?
+  address     String?
+  city        String?
+  state       String?
+  status      RecordStatus @default(ACTIVE)
+  users       User[]
+  plants      Plant[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([status])
+}
+
+model Plant {
+  id              String       @id @default(cuid())
+  name            String
+  customerId      String
+  customer        Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  status          PlantStatus  @default(ACTIVE)
+  installedPowerKw Decimal?
+  distributor     String?
+  consumerUnit    String?
+  address         String?
+  latitude        Decimal?
+  longitude       Decimal?
+  inverters       Inverter[]
+  equipment       Equipment[]
+  readings        MonitoringReading[]
+  alerts          Alert[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model Inverter {
+  id             String               @id @default(cuid())
+  plantId        String
+  plant          Plant                @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  manufacturerId String?
+  manufacturerRef InverterManufacturer? @relation(fields: [manufacturerId], references: [id])
+  manufacturer   String
+  model          String?
+  serialNumber   String?
+  ratedPowerKw   Decimal?
+  externalId     String?
+  status         String?              @default("ACTIVE")
+  readings       MonitoringReading[]
+  equipment      Equipment[]
+  bindings       IntegrationBinding[]
+  alerts         Alert[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([plantId, serialNumber])
+  @@index([plantId])
+  @@index([manufacturerId])
+  @@index([serialNumber])
+  @@index([status])
+}
+
+model MonitoringReading {
+  id             String    @id @default(cuid())
+  plantId        String
+  plant          Plant     @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  inverterId     String?
+  inverter       Inverter? @relation(fields: [inverterId], references: [id], onDelete: Cascade)
+  collectedAt    DateTime
+  powerKw        Decimal?
+  energyTodayKwh Decimal?
+  energyMonthKwh Decimal?
+  energyTotalKwh Decimal?
+  communicationOk Boolean  @default(true)
+  sourceProvider String?
+  idempotencyKey String?   @unique
+  rawPayload     Json?
+  createdAt      DateTime @default(now())
+
+  @@index([plantId, collectedAt])
+  @@index([inverterId, collectedAt])
+  @@index([inverterId, sourceProvider, collectedAt])
+}
+
+enum AlertResolutionType {
+  MANUAL
+  AUTOMATIC
+}
+
+model Alert {
+  id               String               @id @default(cuid())
+  plantId          String
+  plant            Plant                @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  inverterId       String?
+  inverter         Inverter?            @relation(fields: [inverterId], references: [id], onDelete: SetNull)
+  severity         AlertSeverity
+  status           AlertStatus          @default(OPEN)
+  type             String
+  ruleCode         String
+  fingerprint      String
+  title            String
+  description      String?
+  occurredAt       DateTime             @default(now())
+  acknowledgedAt   DateTime?
+  acknowledgedBy   String?
+  resolvedAt       DateTime?
+  resolvedBy       String?
+  resolutionType   AlertResolutionType?
+  events           AlertEvent[]
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([plantId, status])
+  @@index([inverterId, status])
+  @@index([fingerprint, status])
+  @@index([ruleCode, status])
+}
+
+model AlertEvent {
+  id        String   @id @default(cuid())
+  alertId   String
+  alert     Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  type      String
+  actor     String
+  createdAt DateTime @default(now())
+
+  @@index([alertId, createdAt])
+}
+
+enum ManufacturerIntegrationStatus {
+  PLANNED
+  READY
+  ACTIVE
+}
+
+enum InverterOperationalStatus {
+  ONLINE
+  OFFLINE
+  WARNING
+  ERROR
+  UNKNOWN
+}
+
+model InverterManufacturer {
+  id                String                         @id @default(cuid())
+  code              String                         @unique
+  name              String
+  active            Boolean                        @default(true)
+  integrationStatus ManufacturerIntegrationStatus  @default(PLANNED)
+  capabilities      Json?
+  inverters         Inverter[]
+  bindings          IntegrationBinding[]
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
+}
+
+model Equipment {
+  id               String        @id @default(cuid())
+  plantId          String
+  plant            Plant         @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  inverterId       String?
+  inverter         Inverter?     @relation(fields: [inverterId], references: [id], onDelete: SetNull)
+  type             EquipmentType
+  manufacturerName String?
+  model            String?
+  serialNumber     String
+  status           RecordStatus  @default(ACTIVE)
+  notes            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@unique([plantId, serialNumber])
+  @@index([plantId])
+  @@index([type])
+  @@index([status])
+  @@index([inverterId])
+}
+
+enum IntegrationBindingStatus {
+  NOT_CONFIGURED
+  READY
+  CONNECTED
+  AUTH_ERROR
+  COMMUNICATION_ERROR
+}
+
+model Integration {
+  id          String   @id @default(cuid())
+  name        String
+  provider    String
+  enabled     Boolean  @default(true)
+  config      Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model IntegrationBinding {
+  id               String                    @id @default(cuid())
+  provider         String
+  manufacturerId   String?
+  manufacturer     InverterManufacturer?     @relation(fields: [manufacturerId], references: [id])
+  inverterId       String
+  inverter         Inverter                  @relation(fields: [inverterId], references: [id], onDelete: Cascade)
+  externalId       String?
+  status           IntegrationBindingStatus  @default(NOT_CONFIGURED)
+  secretRef        String?
+  lastSyncAt       DateTime?
+  lastErrorAt      DateTime?
+  lastErrorMessage String?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  @@unique([inverterId, provider])
+  @@index([provider])
+  @@index([externalId])
+}

@@ -1,0 +1,1 @@
+export const B7Brand = { name: 'B7 Solar', product: 'Sistema de Monitoramento' };
