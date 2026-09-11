@@ -11,6 +11,26 @@ export class ApiError extends Error {
   }
 }
 
+const REQUEST_TIMEOUT_MS = 15_000;
+
+async function requestWithTimeout(url: string, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const abortFromCaller = () => controller.abort();
+  init.signal?.addEventListener('abort', abortFromCaller, { once: true });
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError(408, 'A solicitação demorou demais. Tente novamente.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    init.signal?.removeEventListener('abort', abortFromCaller);
+  }
+}
+
 export async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAccessToken();
   const headers = new Headers(init?.headers);
@@ -19,7 +39,7 @@ export async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> 
   }
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const response = await requestWithTimeout(`${API_BASE}${path}`, { ...init, headers });
 
   if (response.status === 401) {
     notifyUnauthorized();
@@ -42,7 +62,7 @@ async function readApiMessage(response: Response, fallback: string) {
 }
 
 export async function loginRequest(email: string, password: string) {
-  const response = await fetch(`${API_BASE}/auth/login`, {
+  const response = await requestWithTimeout(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),

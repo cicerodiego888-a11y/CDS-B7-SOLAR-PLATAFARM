@@ -1,4 +1,10 @@
-import { auxsolMockAllowed, resolveAuxsolMode } from './auxsol.config';
+import {
+  auxsolAppId,
+  auxsolAppSecret,
+  auxsolLiveCredentialsConfigured,
+  auxsolMockAllowed,
+  resolveAuxsolMode,
+} from './auxsol.config';
 
 describe('Configuração AUXSOL', () => {
   const env = { ...process.env };
@@ -19,5 +25,30 @@ describe('Configuração AUXSOL', () => {
     delete process.env.AUXSOL_API_BASE_URL;
     process.env.AUXSOL_MOCK_MODE = 'false';
     expect(resolveAuxsolMode()).toBe('blocked');
+  });
+
+  it('resolve APP_ID e APP_SECRET do ambiente', () => {
+    process.env.AUXSOL_APP_ID = ' app-1 ';
+    process.env.AUXSOL_APP_SECRET = ' secret-1 ';
+    delete process.env.AUXSOL_SECRET_REF;
+    expect(auxsolAppId()).toBe('app-1');
+    expect(auxsolAppSecret()).toBe('secret-1');
+  });
+
+  it('resolve secret via AUXSOL_SECRET_REF quando APP_SECRET ausente', () => {
+    delete process.env.AUXSOL_APP_SECRET;
+    process.env.AUXSOL_SECRET_REF = 'MY_AUXSOL_SECRET';
+    process.env.MY_AUXSOL_SECRET = 'from-ref';
+    expect(auxsolAppSecret()).toBe('from-ref');
+  });
+
+  it('exige base URL + app id + secret para live credentials', () => {
+    process.env.AUXSOL_API_BASE_URL = 'https://auxsol.example.test';
+    process.env.AUXSOL_APP_ID = 'id';
+    process.env.AUXSOL_APP_SECRET = 'secret';
+    expect(auxsolLiveCredentialsConfigured()).toBe(true);
+    delete process.env.AUXSOL_APP_SECRET;
+    delete process.env.AUXSOL_SECRET_REF;
+    expect(auxsolLiveCredentialsConfigured()).toBe(false);
   });
 });

@@ -1,107 +1,88 @@
 # Integração AUXSOL
 
-## Estado desta sprint
+## Estado atual (Fase 1 + Fase 2)
 
-Adapter AUXSOL implementado e preparado; comunicação real aguardando contrato oficial/credencial de integração.
+- **Fase 1:** autenticação LIVE `POST /auth/token`, cache de token, Bearer, timeout, erros 401/429/5xx.
+- **Fase 2:** primeira coleta REAL — realtime por SN + normalizer oficial inicial.
 
-Nenhuma URL, endpoint, header, token ou payload oficial foi inventado.
+A integração AUXSOL **não** está 100% completa. Demais endpoints do PDF permanecem pendentes.
 
 ## Fabricante
 
 - Código interno: `AUXSOL`
 - Nome: Auxsol
-- Status do catálogo: `READY` (adapter registrado; coleta oficial ainda não ativa)
+- Status do catálogo: `READY` (adapter registrado; coleta realtime por SN disponível em modo LIVE)
 
 ## Mecanismo de integração
 
-Não definido — aguardando documentação/credencial oficial.
+Camada `AuxsolClient` → transport:
 
-A camada `AuxsolClient` fala com um transporte explícito:
-
-- `blocked`: padrão quando não há URL oficial nem modo de fixture.
-- `mock`: somente com `AUXSOL_MOCK_MODE=true` (proibido em produção, salvo override explícito).
-- `live`: somente se `AUXSOL_API_BASE_URL` for preenchida com a URL oficial. Mesmo assim, nenhum caminho HTTP é chamado até existirem rotas documentadas.
+- `blocked`: padrão quando não há `AUXSOL_API_BASE_URL`.
+- `mock`: `AUXSOL_MOCK_MODE=true` (fixtures internas; sem HTTP).
+- `live`: `AUXSOL_API_BASE_URL` + credenciais; HTTP real via `fetch` nativo.
 
 ## Autenticação
 
-Não definido — aguardando documentação/credencial oficial.
-
-Credenciais, quando existirem, devem ficar no backend via `EnvSecretProvider` e `AUXSOL_SECRET_REF` (nome da variável, nunca o valor no código ou no frontend).
+- `POST /auth/token` com `app_id`, `app_secret`, `lang: zh-CN`
+- Bearer `ACCESS_TOKEN` cacheado (`AuxsolTokenManager`, margem padrão 60s)
+- Credenciais somente no backend: `AUXSOL_APP_ID`, `AUXSOL_APP_SECRET` (ou `AUXSOL_SECRET_REF`)
 
 ## Endpoints oficiais utilizados
 
-Não definido — aguardando documentação/credencial oficial.
+| Endpoint | Status |
+|----------|--------|
+| `POST /auth/token` | Implementado (Fase 1) |
+| `GET /analysis/inverterReport/findInverterRealTimeInfoBySn/{sn}` | Implementado (Fase 2) |
+| Demais archive/analysis/collector/histórico | **Não implementados** |
 
-Nenhuma rota externa é chamada nesta sprint.
+Nenhuma Base URL é inventada — configure `AUXSOL_API_BASE_URL` com a URL oficial.
 
 ## Identificadores
 
 - Interno B7: `Inverter.id`
 - Fabricante: `manufacturer.code === AUXSOL`
-- Série: `Inverter.serialNumber`
-- Externo: `IntegrationBinding.externalId` (genérico; não existe `auxsolDeviceId` no Inverter)
+- **SN para realtime:** `Inverter.serialNumber` (obrigatório na coleta LIVE)
+- Externo genérico: `IntegrationBinding.externalId` (não usado como SN nesta fase)
 
-## Payloads
+## Normalizer (Fase 2)
 
-Não definido — aguardando documentação/credencial oficial.
+Mapeamento mínimo (valores 1:1 em kW / kWh conforme campos do PDF):
 
-As fixtures em `apps/api/src/modules/integrations/auxsol/auxsol.fixtures.ts` são internas da B7 e estão marcadas com `notOfficialContract: true`.
+| AUXSOL | B7 |
+|--------|-----|
+| `energyData.power` | `powerKw` |
+| `energyData.y` | `energyTodayKwh` |
+| `energyData.ym` | `energyMonthKwh` |
+| `energyData.yt` | `energyTotalKwh` |
+| `dt` | `collectedAt` (obrigatório; sem `Date.now()`) |
+| envelope + data | `rawPayload` (sanitizado) |
 
-## Campos e unidades (somente fixtures internas)
-
-As conversões abaixo valem **apenas** para as fixtures B7, que documentam W e Wh:
-
-- `powerW` → `powerKw` (W → kW, divisão por 1000)
-- `todayEnergyWh` → `energyTodayKwh` (Wh → kWh)
-- `totalEnergyWh` → `energyTotalKwh` (Wh → kWh)
-- tensão: V
-- corrente: A
-- frequência: Hz
-- temperatura: °C, se fornecida; caso contrário permanece ausente
-
-Unidades oficiais AUXSOL: não definido — aguardando documentação/credencial oficial.
-
-## Status
-
-Mapeamento interno ocorre só no adapter:
-
-- `running` / `online` → `ONLINE`
-- `offline` → `OFFLINE`
-- `warning` → `WARNING`
-- `fault` / `error` → `ERROR`
-- demais / ausente → `UNKNOWN`
-
-Códigos oficiais AUXSOL: não definido — aguardando documentação/credencial oficial.
-
-## Erros
-
-- Contrato ausente: comunicação bloqueada, sem request inventado.
-- Autenticação: sem retry.
-- Timeout, HTTP 429 e 5xx: retry limitado.
-- Fabricante diferente de AUXSOL: `Este inversor não pertence ao fabricante AUXSOL.`
+Fixtures MOCK legadas (`powerW` / Wh) continuam convertendo W→kW / Wh→kWh apenas no caminho de fixture interna.
 
 ## Persistência
 
-A persistência histórica passou a ser feita pelo Motor de Coleta genérico (`IntegrationCollectionService`).
+Leituras reais só quando modo `live` **e** `AUXSOL_PERSIST_READINGS=true`, via `IntegrationCollectionService` / `MonitoringPersistenceService`.
 
-Leituras reais só podem ser gravadas em `MonitoringReading` quando o modo for `live` e `AUXSOL_PERSIST_READINGS=true`.
+## Pendências explícitas
 
-O modo de fixture **não** grava dados no dashboard.
-
-## Limitações
-
-- Sem contrato oficial de API.
-- Sem credencial de integração.
-- Sem descoberta real de plantas/dispositivos.
-- Sem sincronização automática em massa.
-- Sem scraping, login de navegador ou captura de sessão.
+- Histórico / curvas
+- Plant current data / plant detail
+- Collectors
+- Bateria / grid / load detalhados
+- Regras avançadas de alarmes a partir de `alarmCurrent`
+- Rate limiting outbound completo
+- Credenciais / Base URL / sandbox reais da AUXSOL
+- Confirmação formal de unidades no PDF se divergirem do mapeamento 1:1
 
 ## Variáveis de ambiente
 
-- `AUXSOL_API_BASE_URL` — vazio até a URL oficial
+- `AUXSOL_API_BASE_URL`
+- `AUXSOL_APP_ID`
+- `AUXSOL_APP_SECRET`
+- `AUXSOL_SECRET_REF` — nome de env alternativa ao secret
 - `AUXSOL_API_TIMEOUT_MS` — padrão 10000
 - `AUXSOL_HTTP_MAX_RETRIES` — padrão 2
-- `AUXSOL_MOCK_MODE` — `true` apenas em desenvolvimento
-- `AUXSOL_ALLOW_MOCK_IN_PRODUCTION` — deve permanecer `false`
-- `AUXSOL_PERSIST_READINGS` — persistência só em modo live
-- `AUXSOL_SECRET_REF` — nome da variável de segredo, não o segredo
+- `AUXSOL_TOKEN_REFRESH_MARGIN_MS` — padrão 60000
+- `AUXSOL_MOCK_MODE`
+- `AUXSOL_ALLOW_MOCK_IN_PRODUCTION`
+- `AUXSOL_PERSIST_READINGS`

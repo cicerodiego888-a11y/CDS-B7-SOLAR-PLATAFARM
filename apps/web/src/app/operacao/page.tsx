@@ -14,11 +14,11 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { SelectField } from '../../components/ui/SelectField';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { TextField } from '../../components/ui/TextField';
-import { getAlertSeverityLabel, getAlertStatusLabel } from '../../constants/inverters';
+import { OFFICIAL_INVERTER_MANUFACTURERS, getAlertSeverityLabel, getAlertStatusLabel } from '../../constants/inverters';
 import { ApiError, fetchApi } from '../../lib/api';
 import { DASHBOARD_POLL_MS } from '../../lib/dashboard';
 import { healthLabel } from '../../lib/availability';
-import { formatCoveragePercent, formatEnergyKwh, formatPercentOrNd, formatRelativeTime } from '../../lib/format';
+import { formatCoveragePercent, formatDateTime, formatEnergyKwh, formatPercentOrNd, formatRelativeTime } from '../../lib/format';
 import { can, formatInstalledKwp } from '../../lib/operational';
 import {
   OPERATIONS_EMPTY_ALERTS,
@@ -93,6 +93,26 @@ type OperationsOverview = {
   empty: { plants: boolean; alerts: boolean; issues: boolean; readings: boolean };
 };
 
+type DiagnosisOverview = {
+  total: number;
+  critical: number;
+  attention: number;
+  affectedInverters: number;
+  ratedPowerKw: number | null;
+  incidents: Array<{
+    code: string;
+    title: string;
+    severity: string;
+    status: string;
+    since?: string;
+    plant: { id: string; name: string };
+    inverter: { id: string; name: string | null };
+    evidence: { manufacturer?: string | null; model?: string | null; serialNumber?: string | null; ratedPowerKw?: number | null };
+    recommendedAction: string;
+    alertReference?: { id: string; status: string };
+  }>;
+};
+
 export default function OperacaoPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -100,13 +120,23 @@ export default function OperacaoPage() {
   const [status, setStatus] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [search, setSearch] = useState('');
+  const [diagnosisFilter, setDiagnosisFilter] = useState('ALL');
+  const [diagnosisPlantId, setDiagnosisPlantId] = useState('');
+  const [diagnosisManufacturerId, setDiagnosisManufacturerId] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [customers, setCustomers] = useState<Array<{ value: string; label: string }>>([]);
   const [data, setData] = useState<OperationsOverview | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DiagnosisOverview | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState('');
   const canResolve = can(user, 'ALERTS_RESOLVE');
+  const visibleIncidents = diagnostics?.incidents.filter((incident) => {
+    if (diagnosisFilter === 'CRITICAL') return incident.severity === 'CRITICAL';
+    if (diagnosisFilter === 'ATTENTION') return incident.status === 'ATTENTION' || incident.severity === 'WARNING';
+    if (diagnosisFilter === 'INVERTER_OFFLINE' || diagnosisFilter === 'NO_RECENT_READING' || diagnosisFilter === 'INVERTER_ERROR' || diagnosisFilter === 'INVERTER_WARNING' || diagnosisFilter === 'INTEGRATION_NOT_CONFIGURED' || diagnosisFilter === 'INTEGRATION_BLOCKED') return incident.code === diagnosisFilter;
+    return true;
+  }) ?? [];
 
   useEffect(() => {
     if (user && !can(user, 'MONITORING_VIEW')) router.replace('/acesso-negado');
@@ -116,20 +146,30 @@ export default function OperacaoPage() {
     setError('');
     setLoading(true);
     try {
-      const overview = await fetchApi<OperationsOverview>(`/operations/overview?${buildOperationsQuery({
+      const diagnosisQuery = new URLSearchParams();
+      if (appliedSearch.trim()) diagnosisQuery.set('search', appliedSearch.trim());
+      if (customerId) diagnosisQuery.set('customerId', customerId);
+      if (diagnosisPlantId) diagnosisQuery.set('plantId', diagnosisPlantId);
+      if (diagnosisManufacturerId) diagnosisQuery.set('manufacturerId', diagnosisManufacturerId);
+      if (['INVERTER_OFFLINE', 'NO_RECENT_READING', 'INVERTER_ERROR', 'INVERTER_WARNING', 'INTEGRATION_BLOCKED', 'INTEGRATION_NOT_CONFIGURED'].includes(diagnosisFilter)) diagnosisQuery.set('code', diagnosisFilter);
+      const [overview, diagnosisOverview] = await Promise.all([
+        fetchApi<OperationsOverview>(`/operations/overview?${buildOperationsQuery({
         period,
         status,
         customerId,
         search: appliedSearch,
-      })}`);
+        })}`),
+        fetchApi<DiagnosisOverview>(`/monitoring/diagnostics/overview?${diagnosisQuery.toString()}`),
+      ]);
       setData(overview);
+      setDiagnostics(diagnosisOverview);
     } catch (err) {
       setData(null);
       setError(err instanceof ApiError ? err.message : OPERATIONS_ERROR);
     } finally {
       setLoading(false);
     }
-  }, [period, status, customerId, appliedSearch]);
+  }, [period, status, customerId, appliedSearch, diagnosisFilter, diagnosisPlantId, diagnosisManufacturerId]);
 
   useEffect(() => {
     void load();
@@ -202,6 +242,22 @@ export default function OperacaoPage() {
             onChange={setSearch}
           />
           <Button type="button" onClick={() => setAppliedSearch(search)}>Buscar</Button>
+          <SelectField
+            id="diagnosis-plant"
+            label="Usina dos incidentes"
+            value={diagnosisPlantId}
+            placeholder="Todas"
+            options={data?.plants.map((plant) => ({ value: plant.id, label: plant.name })) ?? []}
+            onChange={setDiagnosisPlantId}
+          />
+          <SelectField
+            id="diagnosis-manufacturer"
+            label="Fabricante dos incidentes"
+            value={diagnosisManufacturerId}
+            placeholder="Todos"
+            options={OFFICIAL_INVERTER_MANUFACTURERS.map((item) => ({ value: item.code, label: item.name }))}
+            onChange={setDiagnosisManufacturerId}
+          />
         </div>
       </section>
 
@@ -218,6 +274,67 @@ export default function OperacaoPage() {
             <MetricCard title="Offline" value={data.summary.plantsOffline} accent="red" />
             <MetricCard title="Inversores" value={data.summary.inverters} note={`${data.summary.invertersOnline} online`} accent="purple" />
             <MetricCard title="Alertas abertos" value={data.summary.openAlerts} accent="orange" />
+          </section>
+
+          <section className="panel">
+            <div className="panel-title">
+              <div>
+                <h2>Incidentes Operacionais</h2>
+                <p>Diagnósticos derivados dos alertas, leituras e estado da integração.</p>
+              </div>
+              <span className="toolbar-filters">
+                <span className="status">{diagnostics?.critical ?? 0} crítico(s) · {diagnostics?.attention ?? 0} em atenção</span>
+                <SelectField
+                  id="diagnosis-filter"
+                  label="Filtro de diagnóstico"
+                  value={diagnosisFilter}
+                  options={[
+                    { value: 'CRITICAL', label: 'Críticos' },
+                    { value: 'ATTENTION', label: 'Atenção' },
+                    { value: 'INVERTER_OFFLINE', label: 'Sem comunicação' },
+                    { value: 'NO_RECENT_READING', label: 'Sem leitura' },
+                    { value: 'INVERTER_ERROR', label: 'Erro' },
+                    { value: 'INVERTER_WARNING', label: 'Aviso' },
+                    { value: 'INTEGRATION_BLOCKED', label: 'Integração bloqueada' },
+                    { value: 'INTEGRATION_NOT_CONFIGURED', label: 'Integração não configurada' },
+                  ]}
+                  placeholder="Todos"
+                  onChange={setDiagnosisFilter}
+                />
+              </span>
+            </div>
+            {visibleIncidents.length ? (
+              <DataTable
+                rows={visibleIncidents}
+                rowKey={(row) => `${row.inverter.id}-${row.code}`}
+                columns={[
+                  { key: 'inverter', header: 'Inversor', render: (row) => <Link href={operationsInverterHref(row.inverter.id)}>{row.inverter.name || row.inverter.id}</Link> },
+                  { key: 'plant', header: 'Usina', render: (row) => <Link href={operationsPlantHref(row.plant.id)}>{row.plant.name}</Link> },
+                  { key: 'diagnosis', header: 'Diagnóstico', render: (row) => row.title },
+                  { key: 'severity', header: 'Severidade', render: (row) => <StatusBadge label={getAlertSeverityLabel(row.severity)} status={row.severity} /> },
+                  { key: 'manufacturer', header: 'Fabricante', render: (row) => row.evidence.manufacturer || 'Não informado' },
+                  { key: 'power', header: 'Potência nominal', render: (row) => row.evidence.ratedPowerKw == null ? 'N/D' : `${row.evidence.ratedPowerKw} kWp` },
+                  { key: 'since', header: 'Observado desde', render: (row) => row.since ? formatDateTime(row.since) : '—' },
+                  {
+                    key: 'action',
+                    header: 'Ação',
+                    render: (row) => (
+                      <span className="toolbar-filters">
+                        <Link href={operationsInverterHref(row.inverter.id)}><Button variant="secondary">Ver diagnóstico</Button></Link>
+                        {row.alertReference && canResolve && row.alertReference.status !== 'RESOLVED' ? (
+                          <Button variant="ghost" type="button" onClick={() => void act(row.alertReference!.id, row.alertReference!.status === 'OPEN' ? 'acknowledge' : 'resolve')}>
+                            {row.alertReference.status === 'OPEN' ? 'Reconhecer' : 'Resolver'}
+                          </Button>
+                        ) : null}
+                      </span>
+                    ),
+                  },
+                ]}
+                empty={<EmptyState title="Nenhum incidente operacional ativo." description="Não existem dados suficientes para diagnóstico." />}
+              />
+            ) : (
+              <EmptyState title="Nenhum incidente operacional ativo." description="Não existem dados suficientes para diagnóstico." />
+            )}
           </section>
 
           <section className="panel">

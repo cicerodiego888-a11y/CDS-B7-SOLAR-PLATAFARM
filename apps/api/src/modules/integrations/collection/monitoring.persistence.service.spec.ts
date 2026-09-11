@@ -68,4 +68,16 @@ describe('MonitoringPersistenceService', () => {
     expect(result.persisted).toBe(2);
     expect(create).toHaveBeenCalledTimes(2);
   });
+
+  it('trata corrida de unicidade como leitura já persistida', async () => {
+    const create = jest.fn().mockRejectedValue({ code: 'P2002' });
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const prisma = {
+      $transaction: async (fn: (tx: unknown) => Promise<void>) => fn({ monitoringReading: { create, findFirst } }),
+    };
+    const service = new MonitoringPersistenceService(prisma as never);
+    const result = await service.persist('p1', 'i1', 'AUXSOL', [reading()]);
+    expect(result.persisted).toBe(0);
+    expect(result.valid).toBe(1);
+  });
 });

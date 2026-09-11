@@ -17,6 +17,8 @@ enum UserRole {
   COMERCIAL
   TECNICO
   POS_VENDA
+  INVESTIDOR
+  CONSUMIDOR
 }
 
 enum PlantStatus {
@@ -46,6 +48,7 @@ model User {
   role         UserRole @default(OPERATOR)
   customerId   String?
   customer     Customer? @relation(fields: [customerId], references: [id])
+  memberships  UserMembership[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -76,10 +79,34 @@ model Customer {
   status      RecordStatus @default(ACTIVE)
   users       User[]
   plants      Plant[]
+  memberships UserMembership[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
   @@index([status])
+}
+
+model UserMembership {
+  id         String       @id @default(cuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       UserRole
+  customerId String?
+  customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  plantId    String?
+  plant      Plant?       @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  /// Chave estável do contexto (evita duplicata com NULLs no unique composto).
+  /// Formato: c:{customerId|-}|p:{plantId|-}
+  scopeKey   String
+  status     RecordStatus @default(ACTIVE)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([userId, role, scopeKey])
+  @@index([userId, status])
+  @@index([customerId])
+  @@index([plantId])
+  @@index([role, status])
 }
 
 model Plant {
@@ -98,6 +125,7 @@ model Plant {
   equipment       Equipment[]
   readings        MonitoringReading[]
   alerts          Alert[]
+  memberships     UserMembership[]
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -284,4 +312,60 @@ model IntegrationBinding {
   @@unique([inverterId, provider])
   @@index([provider])
   @@index([externalId])
+}
+
+/// Cadastro energético mínimo (Domínio 4.1). Sem vínculo com Plant/Rateio/Billing.
+enum DocumentType {
+  CPF
+  CNPJ
+}
+
+model Distributor {
+  id            String         @id @default(cuid())
+  name          String
+  code          String         @unique
+  cnpj          String?
+  status        RecordStatus   @default(ACTIVE)
+  consumerUnits ConsumerUnit[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([status])
+  @@index([name])
+}
+
+model Consumer {
+  id            String         @id @default(cuid())
+  name          String
+  document      String         @unique
+  documentType  DocumentType
+  email         String?
+  phone         String?
+  status        RecordStatus   @default(ACTIVE)
+  consumerUnits ConsumerUnit[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([status])
+  @@index([name])
+}
+
+/// Unidade Consumidora (UC). Independente de Plant; Rateio virá em sprint futura.
+model ConsumerUnit {
+  id            String       @id @default(cuid())
+  consumerId    String
+  consumer      Consumer     @relation(fields: [consumerId], references: [id])
+  distributorId String
+  distributor   Distributor  @relation(fields: [distributorId], references: [id])
+  /// Número/código da UC no contexto da distribuidora (≠ cliente/instalação/medidor).
+  number        String
+  address       String?
+  status        RecordStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([distributorId, number])
+  @@index([consumerId])
+  @@index([distributorId])
+  @@index([status])
 }

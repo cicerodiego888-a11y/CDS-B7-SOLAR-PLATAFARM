@@ -66,6 +66,20 @@ type InverterMonitoring = {
   alerts: Array<{ id: string; title: string; severity: string; status: string; occurredAt: string }>;
 };
 
+type OperationalDiagnosisResponse = {
+  diagnosis: {
+    code: string;
+    title: string;
+    severity: string;
+    status: string;
+    since?: string;
+    durationSeconds?: number;
+    evidence: { normalizedStatus?: string | null; availability?: number | null; coverage?: number | null; equipmentCode?: string | null; equipmentMessage?: string | null };
+    recommendedAction: string;
+  } | null;
+  timeline: Array<{ type: string; at: string; label: string; status?: string | null }>;
+};
+
 function bindingStatusLabel(binding?: Binding | null, manufacturerCode?: string | null) {
   return integrationBindingLabel({
     manufacturerCode,
@@ -85,6 +99,7 @@ export default function InversorDetalhePage() {
   const { user } = useAuth();
   const [data, setData] = useState<Inverter | null>(null);
   const [monitoring, setMonitoring] = useState<InverterMonitoring | null>(null);
+  const [diagnosis, setDiagnosis] = useState<OperationalDiagnosisResponse | null>(null);
   const [error, setError] = useState('');
   const [testMessage, setTestMessage] = useState('');
   const [syncMessage, setSyncMessage] = useState('');
@@ -96,6 +111,9 @@ export default function InversorDetalhePage() {
       fetchApi<Inverter>(`/inverters/${params.id}`).then(setData),
       fetchApi<InverterMonitoring>(`/monitoring/inverters/${params.id}/history?period=last7days`)
         .then(setMonitoring)
+        .catch(() => undefined),
+      fetchApi<OperationalDiagnosisResponse>(`/monitoring/diagnostics/inverters/${params.id}`)
+        .then(setDiagnosis)
         .catch(() => undefined),
     ]).catch((err) => setError(err instanceof ApiError ? err.message : 'Não foi possível carregar o inversor.'));
   }, [params.id]);
@@ -185,6 +203,37 @@ export default function InversorDetalhePage() {
         </section>
         {testMessage ? <p>{testMessage}</p> : null}
         {syncMessage ? <p>{syncMessage}</p> : null}
+      </section>
+      <section className="panel" style={{ marginTop: 18 }}>
+        <div className="panel-title">
+          <div>
+            <h2>Diagnóstico Operacional</h2>
+            <p>Problema detectado com base nas evidências disponíveis, sem afirmar causa confirmada.</p>
+          </div>
+          {diagnosis?.diagnosis ? <StatusBadge label={getAlertSeverityLabel(diagnosis.diagnosis.severity)} status={diagnosis.diagnosis.severity} /> : null}
+        </div>
+        {diagnosis?.diagnosis ? (
+          <div className="cards" style={{ marginTop: 20 }}>
+            <article className="card"><span>Diagnóstico</span><strong>{diagnosis.diagnosis.title}</strong></article>
+            <article className="card"><span>Status</span><strong>{diagnosis.diagnosis.status}</strong></article>
+            <article className="card"><span>Observado desde</span><strong>{diagnosis.diagnosis.since ? formatDateTime(diagnosis.diagnosis.since) : '—'}</strong></article>
+            <article className="card"><span>Status normalizado</span><strong>{diagnosis.diagnosis.evidence.normalizedStatus || '—'}</strong></article>
+            <article className="card"><span>Disponibilidade</span><strong>{formatPercentOrNd(diagnosis.diagnosis.evidence.availability)}</strong></article>
+            <article className="card"><span>Cobertura</span><strong>{formatCoveragePercent(diagnosis.diagnosis.evidence.coverage)}</strong></article>
+            <article className="card"><span>Ação recomendada</span><strong>{diagnosis.diagnosis.recommendedAction}</strong></article>
+            {diagnosis.diagnosis.evidence.equipmentCode || diagnosis.diagnosis.evidence.equipmentMessage ? (
+              <article className="card"><span>Informação do equipamento</span><strong>{[diagnosis.diagnosis.evidence.equipmentCode, diagnosis.diagnosis.evidence.equipmentMessage].filter(Boolean).join(' · ')}</strong></article>
+            ) : null}
+          </div>
+        ) : (
+          <EmptyState title="Nenhum incidente operacional ativo." description="Não existem dados suficientes para diagnóstico." />
+        )}
+        <div className="panel-title" style={{ marginTop: 24 }}><h3>Timeline operacional</h3></div>
+        {diagnosis?.timeline.length ? (
+          <ul className="alert-list">
+            {diagnosis.timeline.map((event, index) => <li key={`${event.type}-${event.at}-${index}`}><div><strong>{event.label}</strong><p>{event.status || event.type}</p></div><div className="alert-meta"><span>{formatDateTime(event.at)}</span></div></li>)}
+          </ul>
+        ) : <p>Não existem eventos suficientes para diagnóstico.</p>}
       </section>
       <section className="panel" style={{ marginTop: 18 }}>
         <div className="panel-title">

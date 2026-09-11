@@ -24,7 +24,7 @@ describe('MonitoringAvailabilityService', () => {
         if (id === 'missing') throw new NotFoundException('Usina não encontrada.');
         return { id };
       }),
-      customerScope: jest.fn().mockResolvedValue(null),
+      buildPlantWhere: jest.fn().mockResolvedValue(undefined),
     };
     const alerts = {
       resolveCollectability: jest.fn((inverter: { bindings?: Array<{ status?: string }> }) => {

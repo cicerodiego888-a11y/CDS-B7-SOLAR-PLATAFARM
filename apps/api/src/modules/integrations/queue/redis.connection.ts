@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
+import { randomUUID } from 'node:crypto';
 import { redisConnectionOptions } from './integration-queue.constants';
 
 export function bullmqConnection() {
@@ -55,5 +56,30 @@ export class RedisConnectionService implements OnModuleInit, OnModuleDestroy {
     } catch {
       return false;
     }
+  }
+
+  async acquireLock(key: string, ttlMs = 30_000) {
+    if (!this.client || !this.isReady()) return null;
+    const token = randomUUID();
+    const acquired = await this.client.set(key, token, 'PX', ttlMs, 'NX');
+    return acquired === 'OK' ? token : null;
+  }
+
+  async releaseLock(key: string, token: string) {
+    if (!this.client || !this.isReady()) return false;
+    const released = await this.client.eval(
+      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+      1,
+      key,
+      token,
+    );
+    return released === 1;
+  }
+
+  async consumeRateLimit(key: string, limit: number, windowMs: number) {
+    if (!this.client || !this.isReady()) return null;
+    const count = await this.client.incr(key);
+    if (count === 1) await this.client.pexpire(key, windowMs);
+    return { allowed: count <= limit, count };
   }
 }

@@ -45,8 +45,8 @@ export class MonitoringHistoryService {
         throw new UnprocessableEntityException('O inversor não pertence à usina informada.');
       }
     }
-    const customerId = await this.access.customerScope(user);
-    return this.compute(parsed, customerId);
+    const plantWhere = await this.access.buildPlantWhere(user);
+    return this.compute(parsed, { plantWhere });
   }
 
   async plantHistory(plantId: string, query: HistoryQuery, user: JwtPayload) {
@@ -57,12 +57,20 @@ export class MonitoringHistoryService {
     return this.history({ ...query, inverterId }, user);
   }
 
-  async compute(input: ReturnType<MonitoringHistoryService['parseQuery']>, customerId?: string | null) {
+  async compute(
+    input: ReturnType<MonitoringHistoryService['parseQuery']>,
+    scope?: string | null | { customerId?: string | null; plantWhere?: Prisma.PlantWhereInput },
+  ) {
+    const normalized =
+      scope == null || typeof scope === 'string'
+        ? { customerId: scope ?? null }
+        : scope;
     const timeZone = monitoringTimeZone();
     const readings = await this.loadReadings(input.from, input.to, {
       plantId: input.plantId,
       inverterId: input.inverterId,
-      customerId,
+      customerId: normalized.customerId,
+      plantWhere: normalized.plantWhere,
     });
     const current = aggregateEnergyHistory(readings, {
       from: input.from,
@@ -74,7 +82,8 @@ export class MonitoringHistoryService {
     const previousReadings = await this.loadReadings(previousRange.from, previousRange.to, {
       plantId: input.plantId,
       inverterId: input.inverterId,
-      customerId,
+      customerId: normalized.customerId,
+      plantWhere: normalized.plantWhere,
     });
     const previous = aggregateEnergyHistory(previousReadings, {
       from: previousRange.from,
@@ -108,11 +117,17 @@ export class MonitoringHistoryService {
     };
   }
 
-  async latestReadings(filter: { plantId?: string; inverterId?: string; customerId?: string | null }) {
+  async latestReadings(filter: {
+    plantId?: string;
+    inverterId?: string;
+    customerId?: string | null;
+    plantWhere?: Prisma.PlantWhereInput;
+  }) {
     const where: Prisma.MonitoringReadingWhereInput = {
       ...(filter.plantId ? { plantId: filter.plantId } : {}),
       ...(filter.inverterId ? { inverterId: filter.inverterId } : {}),
-      ...(filter.customerId ? { plant: { customerId: filter.customerId } } : {}),
+      ...(filter.plantWhere ? { plant: filter.plantWhere } : {}),
+      ...(filter.customerId && !filter.plantWhere ? { plant: { customerId: filter.customerId } } : {}),
     };
     const rows = await this.prisma.monitoringReading.findMany({
       where,
@@ -171,13 +186,19 @@ export class MonitoringHistoryService {
   private async loadReadings(
     from: Date,
     to: Date,
-    filter: { plantId?: string; inverterId?: string; customerId?: string | null },
+    filter: {
+      plantId?: string;
+      inverterId?: string;
+      customerId?: string | null;
+      plantWhere?: Prisma.PlantWhereInput;
+    },
   ): Promise<ReadingRow[]> {
     const where: Prisma.MonitoringReadingWhereInput = {
       collectedAt: { gte: from, lt: to },
       ...(filter.plantId ? { plantId: filter.plantId } : {}),
       ...(filter.inverterId ? { inverterId: filter.inverterId } : {}),
-      ...(filter.customerId ? { plant: { customerId: filter.customerId } } : {}),
+      ...(filter.plantWhere ? { plant: filter.plantWhere } : {}),
+      ...(filter.customerId && !filter.plantWhere ? { plant: { customerId: filter.customerId } } : {}),
     };
     const rows = await this.prisma.monitoringReading.findMany({
       where,

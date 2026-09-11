@@ -35,15 +35,15 @@ export class OperationsService {
     query: { period?: string; status?: string; customerId?: string; search?: string } = {},
   ) {
     const period = PERIODS.includes(query.period as typeof PERIODS[number]) ? query.period as typeof PERIODS[number] : 'today';
-    const customerId = await this.access.customerScope(user);
+    const plantWhere = await this.access.buildPlantWhere(user);
     const search = query.search?.trim();
 
     const parsed = this.history.parseQuery({ period });
     const [plants, activeAlerts, latest, history, health] = await Promise.all([
       this.prisma.plant.findMany({
         where: {
-          ...(customerId ? { customerId } : {}),
-          ...(query.customerId && !customerId ? { customerId: query.customerId } : {}),
+          ...(plantWhere ?? {}),
+          ...(query.customerId && !plantWhere ? { customerId: query.customerId } : {}),
           ...(search ? {
             OR: [
               { name: { contains: search, mode: 'insensitive' } },
@@ -61,9 +61,16 @@ export class OperationsService {
         },
         orderBy: { name: 'asc' },
       }),
-      this.alerts.listActive(customerId),
-      this.history.latestReadings({ customerId }),
-      this.history.compute(this.history.parseQuery({ period }), customerId),
+      this.prisma.alert.findMany({
+        where: {
+          status: { in: ['OPEN', 'ACKNOWLEDGED'] },
+          ...(plantWhere ? { plant: plantWhere } : {}),
+        },
+        include: { plant: true, inverter: true },
+        orderBy: { occurredAt: 'desc' },
+      }),
+      this.history.latestReadings({ plantWhere }),
+      this.history.compute(this.history.parseQuery({ period }), { plantWhere }),
       this.health.status(),
     ]);
 

@@ -5,22 +5,34 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { PermissionsGuard } from './permissions.guard';
+import { AuthorizationService, MembershipsService } from './authorization.service';
+import { MembershipsController } from './memberships.controller';
+
+function jwtSecret() {
+  const secret = process.env.JWT_SECRET?.trim();
+  if (process.env.NODE_ENV === 'production' && (!secret || secret === 'dev-secret')) {
+    throw new Error('JWT_SECRET forte é obrigatório em produção.');
+  }
+  return secret || 'dev-secret';
+}
 
 @Module({
   imports: [
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'dev-secret',
+      secret: jwtSecret(),
       signOptions: { expiresIn: '8h' },
     }),
   ],
   providers: [
     AuthService,
+    AuthorizationService,
+    MembershipsService,
     JwtAuthGuard,
     PermissionsGuard,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
-  controllers: [AuthController],
-  exports: [AuthService, JwtModule, JwtAuthGuard, PermissionsGuard],
+  controllers: [AuthController, MembershipsController],
+  exports: [AuthService, AuthorizationService, MembershipsService, JwtModule, JwtAuthGuard, PermissionsGuard],
 })
 export class AuthModule {}

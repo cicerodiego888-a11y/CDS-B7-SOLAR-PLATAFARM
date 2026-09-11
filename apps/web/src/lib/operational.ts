@@ -5,6 +5,11 @@ export const RECORD_STATUS_OPTIONS = [
   { value: 'INACTIVE', label: 'Inativo' },
 ];
 
+export const DOCUMENT_TYPE_OPTIONS = [
+  { value: 'CPF', label: 'CPF' },
+  { value: 'CNPJ', label: 'CNPJ' },
+];
+
 export const PLANT_STATUS_OPTIONS = [
   { value: 'ACTIVE', label: 'Ativa' },
   { value: 'INACTIVE', label: 'Inativa' },

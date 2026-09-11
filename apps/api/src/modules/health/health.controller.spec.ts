@@ -1,4 +1,6 @@
 import { HealthService } from './health.service';
+import { HealthController } from './health.module';
+import { ServiceUnavailableException } from '@nestjs/common';
 
 describe('HealthService', () => {
   it('marca Redis indisponível sem mascarar a falha', async () => {
@@ -29,5 +31,24 @@ describe('HealthService', () => {
       redis: 'ok',
     });
     expect(result.integrations.AUXSOL).toBe('blocked');
+  });
+
+  it('liveness não depende de banco, Redis ou fabricante', () => {
+    const controller = new HealthController({} as never);
+    expect(controller.live().status).toBe('ok');
+  });
+
+  it('readiness falha quando Redis está indisponível', async () => {
+    const controller = new HealthController({
+      status: jest.fn().mockResolvedValue({ database: 'ok', redis: 'down', status: 'degraded' }),
+    } as never);
+    await expect(controller.ready()).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('readiness retorna ready com banco e Redis disponíveis', async () => {
+    const controller = new HealthController({
+      status: jest.fn().mockResolvedValue({ database: 'ok', redis: 'ok', status: 'ok' }),
+    } as never);
+    await expect(controller.ready()).resolves.toMatchObject({ status: 'ready', database: 'ok', redis: 'ok' });
   });
 });

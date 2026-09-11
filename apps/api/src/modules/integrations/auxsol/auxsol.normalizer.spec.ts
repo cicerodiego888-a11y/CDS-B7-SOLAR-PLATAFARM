@@ -1,5 +1,12 @@
-import { AUXSOL_FIXTURE_OPTIONAL_MISSING, AUXSOL_FIXTURE_VALID } from './auxsol.fixtures';
-import { normalizeAuxsolFixture, normalizeAuxsolStatus, wattHoursToKwh, wattsToKw } from './auxsol.normalizer';
+import { AUXSOL_FIXTURE_OPTIONAL_MISSING, AUXSOL_FIXTURE_VALID, AUXSOL_OFFICIAL_REALTIME_FIXTURE } from './auxsol.fixtures';
+import {
+  normalizeAuxsolFixture,
+  normalizeAuxsolRealtime,
+  normalizeAuxsolStatus,
+  parseAuxsolTimestamp,
+  wattHoursToKwh,
+  wattsToKw,
+} from './auxsol.normalizer';
 import { AuxsolInvalidPayloadError } from './auxsol.errors';
 
 describe('Normalização AUXSOL (fixtures internas)', () => {
@@ -37,5 +44,63 @@ describe('Normalização AUXSOL (fixtures internas)', () => {
 
   it('rejeita payload inválido', () => {
     expect(() => normalizeAuxsolFixture({} as never)).toThrow(AuxsolInvalidPayloadError);
+  });
+});
+
+describe('Normalização AUXSOL (contrato oficial realtime)', () => {
+  it('mapeia energyData.power/y/ym/yt sem conversão inventada', () => {
+    const [reading] = normalizeAuxsolRealtime(AUXSOL_OFFICIAL_REALTIME_FIXTURE, {
+      inverterId: 'inv-1',
+      serialNumber: 'TEST-SN-001',
+    });
+    expect(reading.powerKw).toBe(1.25);
+    expect(reading.energyTodayKwh).toBe(8.5);
+    expect(reading.energyMonthKwh).toBe(120.4);
+    expect(reading.energyTotalKwh).toBe(3500.2);
+    expect(reading.acPowerKw).toBe(1.25);
+    expect(reading.externalInverterId).toBe('TEST-SN-001');
+    expect(reading.externalPlantId).toBe('plant-ext-1');
+    expect(reading.externalReadingId).toBe('rt-001');
+    expect(reading.communicationOk).toBe(true);
+    expect(reading.status).toBe('UNKNOWN');
+  });
+
+  it('usa dt do payload como collectedAt (UTC quando sem timezone)', () => {
+    const [reading] = normalizeAuxsolRealtime(AUXSOL_OFFICIAL_REALTIME_FIXTURE);
+    expect(reading.collectedAt?.toISOString()).toBe('2026-09-10T15:30:00.000Z');
+  });
+
+  it('parseia dt em epoch e ISO', () => {
+    const ms = Date.parse('2024-09-10T18:10:00.000Z');
+    expect(parseAuxsolTimestamp(ms)?.toISOString()).toBe('2024-09-10T18:10:00.000Z');
+    expect(parseAuxsolTimestamp(Math.floor(ms / 1000))?.toISOString()).toBe('2024-09-10T18:10:00.000Z');
+    expect(parseAuxsolTimestamp('2026-09-10T15:30:00.000Z')?.toISOString()).toBe('2026-09-10T15:30:00.000Z');
+  });
+
+  it('rejeita ausência de dt sem usar Date.now()', () => {
+    expect(() => normalizeAuxsolRealtime({
+      code: 'AWX-0000',
+      data: { sn: 'X', energyData: { power: 1 } },
+    })).toThrow(/dt ausente|Timestamp/);
+  });
+
+  it('rejeita code diferente de AWX-0000', () => {
+    expect(() => normalizeAuxsolRealtime({
+      code: 'AWX-9999',
+      data: { sn: 'X', dt: '2026-09-10 15:30:00', energyData: {} },
+    })).toThrow(AuxsolInvalidPayloadError);
+  });
+
+  it('preserva rawPayload sem inventar potência a partir do tempo', () => {
+    const [reading] = normalizeAuxsolRealtime(AUXSOL_OFFICIAL_REALTIME_FIXTURE);
+    expect(reading.rawPayload).toMatchObject({
+      code: 'AWX-0000',
+      data: { sn: 'TEST-SN-001' },
+    });
+    expect(JSON.stringify(reading.rawPayload)).not.toMatch(/access_token|Bearer|app_secret/i);
+  });
+
+  it('retorna lista vazia quando data é null', () => {
+    expect(normalizeAuxsolRealtime({ code: 'AWX-0000', data: null })).toEqual([]);
   });
 });

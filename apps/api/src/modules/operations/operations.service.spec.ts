@@ -27,8 +27,11 @@ function inverter(id: string, overrides: Record<string, unknown> = {}) {
 
 describe('OperationsService', () => {
   function setup(plants: unknown[], alerts: unknown[] = [], latest: unknown[] = [], byPlant: Record<string, number> = {}) {
-    const prisma = { plant: { findMany: jest.fn().mockResolvedValue(plants) } };
-    const access = { customerScope: jest.fn().mockResolvedValue(null) };
+    const prisma = {
+      plant: { findMany: jest.fn().mockResolvedValue(plants) },
+      alert: { findMany: jest.fn().mockResolvedValue(alerts) },
+    };
+    const access = { buildPlantWhere: jest.fn().mockResolvedValue(undefined) };
     const history = {
       latestReadings: jest.fn().mockResolvedValue(latest),
       parseQuery: jest.fn((query) => ({
@@ -91,11 +94,11 @@ describe('OperationsService', () => {
   });
 
   it('conta alertas ativos e ignora RESOLVED', async () => {
-    const { service, alertsService } = setup([plant('p1', 'A')], [
+    const { service, prisma } = setup([plant('p1', 'A')], [
       { id: 'a1', plantId: 'p1', inverterId: 'i1', severity: 'CRITICAL', status: 'OPEN', occurredAt: new Date(), title: 'Off', ruleCode: 'INVERTER_OFFLINE', plant: { name: 'A' }, inverter: { model: 'X' } },
     ]);
     const result = await service.overview(user);
-    expect(alertsService.listActive).toHaveBeenCalled();
+    expect(prisma.alert.findMany).toHaveBeenCalled();
     expect(result.summary.openAlerts).toBe(1);
     expect(result.alerts[0].status).toBe('OPEN');
   });
@@ -143,10 +146,10 @@ describe('OperationsService', () => {
   });
 
   it('evita N+1: uma consulta de usinas, alertas, leituras e histórico', async () => {
-    const { service, prisma, history, alertsService, availability } = setup([plant('p1', 'A'), plant('p2', 'B')]);
+    const { service, prisma, history, availability } = setup([plant('p1', 'A'), plant('p2', 'B')]);
     await service.overview(user);
     expect(prisma.plant.findMany).toHaveBeenCalledTimes(1);
-    expect(alertsService.listActive).toHaveBeenCalledTimes(1);
+    expect(prisma.alert.findMany).toHaveBeenCalledTimes(1);
     expect(history.latestReadings).toHaveBeenCalledTimes(1);
     expect(history.compute).toHaveBeenCalledTimes(1);
     expect(availability.computeMany).toHaveBeenCalledTimes(1);

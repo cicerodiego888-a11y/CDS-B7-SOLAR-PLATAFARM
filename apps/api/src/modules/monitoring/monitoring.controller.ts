@@ -6,6 +6,7 @@ import { DashboardPeriod } from './monitoring.aggregation';
 import { MonitoringAvailabilityService } from './monitoring.availability.service';
 import { MonitoringHistoryService } from './monitoring.history.service';
 import { MonitoringService } from './monitoring.service';
+import { MonitoringDiagnosisService } from './monitoring-diagnosis.service';
 
 const DASHBOARD_PERIODS: DashboardPeriod[] = ['today', 'yesterday', 'last7days', 'last30days', 'thisMonth', 'previousMonth'];
 
@@ -15,7 +16,36 @@ export class MonitoringController {
     private readonly service: MonitoringService,
     private readonly history: MonitoringHistoryService,
     private readonly availability: MonitoringAvailabilityService,
+    private readonly diagnosis: MonitoringDiagnosisService,
   ) {}
+
+  @Permissions('MONITORING_VIEW')
+  @Get('diagnostics/overview')
+  diagnosisOverview(
+    @CurrentUser() user: JwtPayload,
+    @Query('severity') severity?: string,
+    @Query('code') code?: string,
+    @Query('customerId') customerId?: string,
+    @Query('plantId') plantId?: string,
+    @Query('manufacturerId') manufacturerId?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.diagnosis.overview(user, { severity, code, customerId, plantId, manufacturerId, search, page, pageSize });
+  }
+
+  @Permissions('MONITORING_VIEW')
+  @Get('diagnostics/inverters/:inverterId')
+  inverterDiagnosis(@Param('inverterId') inverterId: string, @CurrentUser() user: JwtPayload) {
+    return this.diagnosis.inverter(inverterId, user);
+  }
+
+  @Permissions('MONITORING_VIEW')
+  @Get('diagnostics/plants/:plantId')
+  plantDiagnosis(@Param('plantId') plantId: string, @CurrentUser() user: JwtPayload) {
+    return this.diagnosis.plant(plantId, user);
+  }
 
   @Permissions('MONITORING_VIEW', 'DASHBOARD_VIEW')
   @Get('overview')

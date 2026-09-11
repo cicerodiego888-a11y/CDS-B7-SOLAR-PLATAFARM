@@ -22,31 +22,32 @@ export class MonitoringService {
 
   async overview(period: DashboardPeriod = 'today', user?: JwtPayload) {
     const now = new Date();
-    const customerId = user ? await this.access.customerScope(user) : null;
-    const plantWhere = customerId ? { customerId } : {};
+    const plantWhere = user ? await this.access.buildPlantWhere(user) : undefined;
+    const historyScope = { plantWhere };
+    const alertPlantWhere = plantWhere ? { plant: plantWhere } : {};
 
     const [plants, openAlerts, recentAlerts, operator, today, month, selected, latest] = await Promise.all([
       this.prisma.plant.findMany({
-        where: plantWhere,
+        where: plantWhere ?? {},
         include: { customer: true, inverters: true },
         orderBy: { updatedAt: 'desc' },
       }),
       this.prisma.alert.findMany({
-        where: { status: { in: ['OPEN', 'ACKNOWLEDGED'] }, ...(customerId ? { plant: { customerId } } : {}) },
+        where: { status: { in: ['OPEN', 'ACKNOWLEDGED'] }, ...alertPlantWhere },
         orderBy: { occurredAt: 'desc' },
         take: 20,
       }),
       this.prisma.alert.findMany({
-        where: customerId ? { plant: { customerId } } : {},
+        where: alertPlantWhere,
         include: { plant: { include: { inverters: true } } },
         orderBy: { occurredAt: 'desc' },
         take: 8,
       }),
       this.prisma.user.findFirst({ orderBy: { createdAt: 'asc' }, select: { id: true, name: true } }),
-      this.history.compute(this.history.parseQuery({ period: 'today' }), customerId),
-      this.history.compute(this.history.parseQuery({ period: 'thisMonth' }), customerId),
-      this.history.compute(this.history.parseQuery({ period }), customerId),
-      this.history.latestReadings({ customerId }),
+      this.history.compute(this.history.parseQuery({ period: 'today' }), historyScope),
+      this.history.compute(this.history.parseQuery({ period: 'thisMonth' }), historyScope),
+      this.history.compute(this.history.parseQuery({ period }), historyScope),
+      this.history.latestReadings({ plantWhere }),
     ]);
 
     const currentPower = sumLatestPowerKw(latest);
@@ -89,7 +90,11 @@ export class MonitoringService {
         warning: openAlerts.filter((alert) => alert.severity === 'WARNING').length,
         info: openAlerts.filter((alert) => alert.severity === 'INFO').length,
       },
-      customers: { total: customerId ? 1 : await this.prisma.customer.count() },
+      customers: {
+        total: plantWhere
+          ? new Set(plants.map((plant) => plant.customerId)).size
+          : await this.prisma.customer.count(),
+      },
       generationSeries: selected.series.map((point) => ({
         label: point.label,
         valueKwh: point.energyKwh,

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useAuth } from '../../../components/auth/AuthProvider';
 import { Button } from '../../../components/ui/Button';
 import { DataTable } from '../../../components/ui/DataTable';
 import { EmptyState } from '../../../components/ui/EmptyState';
@@ -15,7 +16,7 @@ import { MonitoringHistoryPanel } from '../../../components/monitoring/Monitorin
 import { getAlertSeverityLabel, getAlertStatusLabel } from '../../../constants/inverters';
 import { healthLabel, periodLabel } from '../../../lib/availability';
 import { formatCoveragePercent, formatDateTime, formatEnergyKwh, formatPercentOrNd } from '../../../lib/format';
-import { equipmentTypeLabel, formatInstalledKwp, plantOperationalLabel, recordStatusLabel } from '../../../lib/operational';
+import { can, equipmentTypeLabel, formatInstalledKwp, plantOperationalLabel, recordStatusLabel } from '../../../lib/operational';
 
 type Plant = {
   id: string;
@@ -57,11 +58,38 @@ type PlantMonitoring = {
   alerts: Array<{ id: string; title: string; severity: string; status: string; occurredAt: string; inverter?: { model?: string | null } | null }>;
 };
 
+type PlantDiagnosis = {
+  health: { status: string };
+  availability: number | null;
+  coverage: number;
+  totalInverters: number;
+  affectedInverters: number;
+  critical: number;
+  attention: number;
+  ratedPowerKw: number | null;
+  lastCommunication: string | null;
+  summary: string;
+  incidents: Array<{
+    code: string;
+    title: string;
+    severity: string;
+    status: string;
+    since?: string;
+    inverter: { id: string; name: string | null };
+    evidence: { manufacturer?: string | null; ratedPowerKw?: number | null };
+    recommendedAction: string;
+    alertReference?: { id: string; status: string };
+  }>;
+};
+
 export default function UsinaDetalhePage() {
   const params = useParams<{ id: string }>();
   const [data, setData] = useState<Plant | null>(null);
   const [monitoring, setMonitoring] = useState<PlantMonitoring | null>(null);
+  const [diagnosis, setDiagnosis] = useState<PlantDiagnosis | null>(null);
   const [error, setError] = useState('');
+  const { user } = useAuth();
+  const canResolve = can(user, 'ALERTS_RESOLVE');
 
   useEffect(() => {
     fetchApi<Plant>(`/plants/${params.id}`)
@@ -70,7 +98,20 @@ export default function UsinaDetalhePage() {
     fetchApi<PlantMonitoring>(`/monitoring/plants/${params.id}/history?period=today`)
       .then(setMonitoring)
       .catch(() => undefined);
+    fetchApi<PlantDiagnosis>(`/monitoring/diagnostics/plants/${params.id}`)
+      .then(setDiagnosis)
+      .catch(() => undefined);
   }, [params.id]);
+
+  async function act(id: string, action: 'acknowledge' | 'resolve') {
+    try {
+      await fetchApi(`/alerts/${id}/${action}`, { method: action === 'acknowledge' ? 'POST' : 'PATCH' });
+      const refreshed = await fetchApi<PlantDiagnosis>(`/monitoring/diagnostics/plants/${params.id}`);
+      setDiagnosis(refreshed);
+    } catch {
+      setError('Não foi possível atualizar o alerta.');
+    }
+  }
 
   if (error) return <div className="shell"><ErrorMessage message={error} /></div>;
   if (!data) return <div className="shell"><LoadingState message="Carregando usina..." /></div>;
@@ -122,6 +163,35 @@ export default function UsinaDetalhePage() {
               : 'Nenhum no período'}
           </strong></article>
         </section>
+      </section>
+      <section className="panel" style={{ marginTop: 18 }}>
+        <div className="panel-title">
+          <div>
+            <h2>Diagnóstico Operacional</h2>
+            <p>{diagnosis?.summary || 'Não existem dados suficientes para diagnóstico.'}</p>
+          </div>
+          <StatusBadge label={diagnosis?.health.status || 'NO_DATA'} status={diagnosis?.health.status || 'NO_DATA'} />
+        </div>
+        <section className="cards" style={{ marginTop: 20 }}>
+          <article className="card"><span>Disponibilidade</span><strong>{formatPercentOrNd(diagnosis?.availability)}</strong></article>
+          <article className="card"><span>Cobertura</span><strong>{formatCoveragePercent(diagnosis?.coverage)}</strong></article>
+          <article className="card"><span>Inversores afetados</span><strong>{diagnosis?.affectedInverters ?? '—'}</strong></article>
+          <article className="card"><span>Potência nominal afetada</span><strong>{diagnosis?.ratedPowerKw == null ? 'N/D' : `${diagnosis.ratedPowerKw} kWp`}</strong></article>
+          <article className="card"><span>Última comunicação</span><strong>{diagnosis?.lastCommunication ? formatDateTime(diagnosis.lastCommunication) : 'Não disponível'}</strong></article>
+        </section>
+        <DataTable
+          rows={diagnosis?.incidents ?? []}
+          rowKey={(row) => `${row.inverter.id}-${row.code}`}
+          columns={[
+            { key: 'severity', header: 'Severidade', render: (row) => <StatusBadge label={getAlertSeverityLabel(row.severity)} status={row.severity} /> },
+            { key: 'problem', header: 'Problema', render: (row) => row.title },
+            { key: 'inverter', header: 'Inversor', render: (row) => <Link href={`/inversores/${row.inverter.id}`}>{row.inverter.name || row.inverter.id}</Link> },
+            { key: 'manufacturer', header: 'Fabricante', render: (row) => row.evidence.manufacturer || 'Não informado' },
+            { key: 'since', header: 'Desde', render: (row) => row.since ? formatDateTime(row.since) : '—' },
+            { key: 'action', header: 'Ação', render: (row) => row.alertReference && canResolve && row.alertReference.status !== 'RESOLVED' ? <Button variant="ghost" type="button" onClick={() => void act(row.alertReference!.id, row.alertReference!.status === 'OPEN' ? 'acknowledge' : 'resolve')}>{row.alertReference.status === 'OPEN' ? 'Reconhecer' : 'Resolver'}</Button> : <Link href={`/inversores/${row.inverter.id}`}><Button variant="secondary">Ver diagnóstico</Button></Link> },
+          ]}
+          empty={<EmptyState title="Nenhum incidente operacional ativo." description="Não existem dados suficientes para diagnóstico." />}
+        />
       </section>
       <MonitoringHistoryPanel
         endpoint={`/monitoring/plants/${data.id}/history`}

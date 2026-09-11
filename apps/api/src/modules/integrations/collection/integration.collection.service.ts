@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { IntegrationBindingStatus } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { CollectionResult } from '../integration.contract';
@@ -16,6 +16,7 @@ import { MonitoringPersistenceService } from './monitoring.persistence.service';
 import { validateNormalizedReading } from './reading.validator';
 import { MonitoringAlertService } from '../../alerts/alert.engine';
 import { omitSensitiveKeys } from '../security.redact';
+import { RedisConnectionService } from '../queue/redis.connection';
 
 @Injectable()
 export class IntegrationCollectionService {
@@ -26,6 +27,7 @@ export class IntegrationCollectionService {
     private readonly prisma: PrismaService,
     private readonly persistence: MonitoringPersistenceService,
     @Optional() private readonly alerts?: MonitoringAlertService,
+    @Optional() private readonly redis?: RedisConnectionService,
   ) {}
 
   useEngine(engine: IntegrationEngine) {
@@ -34,13 +36,23 @@ export class IntegrationCollectionService {
   }
 
   async collectInverter(inverterId: string): Promise<CollectionResult> {
-    if (!this.lock.tryAcquire(inverterId)) throw concurrentCollection();
+    const key = `collect-lock:${inverterId}`;
+    const token = this.redis
+      ? await this.acquireDistributedLock(key)
+      : null;
+    if (this.redis ? !token : !this.lock.tryAcquire(inverterId)) throw concurrentCollection();
     const started = Date.now();
     try {
       return await this.execute(inverterId, started);
     } finally {
-      this.lock.release(inverterId);
+      if (token) await this.redis?.releaseLock(key, token);
+      else this.lock.release(inverterId);
     }
+  }
+
+  private async acquireDistributedLock(key: string) {
+    if (!this.redis?.isReady()) throw new ServiceUnavailableException('Redis indisponível para coordenar a coleta.');
+    return this.redis.acquireLock(key, Number(process.env.MONITORING_COLLECTION_LOCK_TTL_MS) || 30_000);
   }
 
   private async execute(inverterId: string, started: number): Promise<CollectionResult> {

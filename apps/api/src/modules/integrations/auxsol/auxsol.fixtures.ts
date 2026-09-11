@@ -50,3 +50,34 @@ export const AUXSOL_FIXTURE_INVALID = {
   notOfficialContract: true,
   unexpected: true,
 };
+
+/**
+ * Fixture de teste alinhada à estrutura do contrato PDF (realtime por SN).
+ * Valores fictícios. Sem credenciais/tokens reais.
+ * Unidades: power em kW; y/ym/yt em kWh (mapeamento 1:1 → NormalizedMonitoringData).
+ */
+export const AUXSOL_OFFICIAL_REALTIME_FIXTURE = {
+  fixture: 'b7-auxsol-official-realtime-fixture',
+  code: 'AWX-0000',
+  msg: null,
+  data: {
+    id: 'rt-001',
+    sn: 'TEST-SN-001',
+    dt: '2026-09-10 15:30:00',
+    pId: 'plant-ext-1',
+    lastCommTime: '2026-09-10 15:29:50',
+    ratedPower: 5,
+    energyData: {
+      power: 1.25,
+      y: 8.5,
+      ym: 120.4,
+      yt: 3500.2,
+      yy: 3500.2,
+    },
+    alarmCurrent: {
+      faultCode: null,
+      alarmCode: null,
+      alarmCount: 0,
+    },
+  },
+};

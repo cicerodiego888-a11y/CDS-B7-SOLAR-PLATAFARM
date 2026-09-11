@@ -11,11 +11,28 @@ describe('Catálogo de perfis e permissões', () => {
   it('concede acesso completo ao administrador', () => {
     expect(hasPermission('ADMIN', 'USERS_DELETE')).toBe(true);
     expect(hasPermission('ADMINISTRADOR', 'PLANTS_CREATE')).toBe(true);
+    expect(hasPermission('ADMINISTRADOR', 'USERS_MEMBERSHIPS_VIEW')).toBe(true);
+  });
+
+  it('reconhece INVESTIDOR e CONSUMIDOR', () => {
+    expect(normalizeProfile('INVESTIDOR')).toBe('INVESTIDOR');
+    expect(getRoleLabel('CONSUMIDOR')).toBe('Consumidor');
+    expect(hasPermission('INVESTIDOR', 'MONITORING_VIEW')).toBe(true);
+    expect(hasPermission('CONSUMIDOR', 'SETTINGS_VIEW')).toBe(false);
   });
 
   it('restringe operador sem gestão de usuários', () => {
     expect(hasPermission('OPERADOR', 'DASHBOARD_VIEW')).toBe(true);
     expect(hasPermission('OPERADOR', 'USERS_DELETE')).toBe(false);
     expect(getPermissionsForRole('COMERCIAL')).toContain('CUSTOMERS_VIEW');
+  });
+
+  it('concede cadastro energético mínimo a admin e comercial', () => {
+    expect(hasPermission('ADMIN', 'DISTRIBUTORS_CREATE')).toBe(true);
+    expect(hasPermission('COMERCIAL', 'CONSUMERS_UPDATE')).toBe(true);
+    expect(hasPermission('COMERCIAL', 'CONSUMER_UNITS_CREATE')).toBe(true);
+    expect(hasPermission('OPERADOR', 'DISTRIBUTORS_VIEW')).toBe(true);
+    expect(hasPermission('OPERADOR', 'DISTRIBUTORS_CREATE')).toBe(false);
+    expect(hasPermission('CONSUMIDOR', 'CONSUMER_UNITS_VIEW')).toBe(false);
   });
 });

@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 export const RECORD_STATUSES = ['ACTIVE', 'INACTIVE'] as const;
 export const PLANT_OPERATIONAL_STATUSES = ['ACTIVE', 'INACTIVE'] as const;
 export const EQUIPMENT_TYPES = ['INVERSOR', 'DATALOGGER', 'GATEWAY', 'MEDIDOR', 'COMUNICACAO', 'OUTRO'] as const;
+export const DOCUMENT_TYPES = ['CPF', 'CNPJ'] as const;
 
 export class CreateCustomerDto {
   @IsString() @IsNotEmpty({ message: 'Informe o nome do cliente.' })
@@ -179,4 +180,97 @@ export class UpdateEquipmentDto {
 
   @IsOptional() @IsString()
   notes?: string;
+}
+
+export class CreateDistributorDto {
+  @IsString() @IsNotEmpty({ message: 'Informe o nome da distribuidora.' })
+  name!: string;
+
+  @IsString() @IsNotEmpty({ message: 'Informe o código da distribuidora.' })
+  code!: string;
+
+  @IsOptional() @IsString()
+  cnpj?: string;
+
+  @IsOptional() @IsIn(RECORD_STATUSES, { message: 'Status inválido.' })
+  status?: 'ACTIVE' | 'INACTIVE';
+}
+
+export class UpdateDistributorDto {
+  @IsOptional() @IsString() @IsNotEmpty({ message: 'Informe o nome da distribuidora.' })
+  name?: string;
+
+  @IsOptional() @IsString() @IsNotEmpty({ message: 'Informe o código da distribuidora.' })
+  code?: string;
+
+  @IsOptional() @IsString()
+  cnpj?: string;
+}
+
+export class CreateConsumerDto {
+  @IsString() @IsNotEmpty({ message: 'Informe o nome do consumidor.' })
+  name!: string;
+
+  @IsString() @IsNotEmpty({ message: 'Informe o CPF/CNPJ.' })
+  document!: string;
+
+  @IsIn(DOCUMENT_TYPES, { message: 'Tipo de documento inválido.' })
+  documentType!: (typeof DOCUMENT_TYPES)[number];
+
+  @IsOptional() @IsEmail({}, { message: 'Informe um e-mail válido.' })
+  email?: string;
+
+  @IsOptional() @IsString()
+  phone?: string;
+
+  @IsOptional() @IsIn(RECORD_STATUSES, { message: 'Status inválido.' })
+  status?: 'ACTIVE' | 'INACTIVE';
+}
+
+export class UpdateConsumerDto {
+  @IsOptional() @IsString() @IsNotEmpty({ message: 'Informe o nome do consumidor.' })
+  name?: string;
+
+  @IsOptional() @IsString() @IsNotEmpty({ message: 'Informe o CPF/CNPJ.' })
+  document?: string;
+
+  @IsOptional() @IsIn(DOCUMENT_TYPES, { message: 'Tipo de documento inválido.' })
+  documentType?: (typeof DOCUMENT_TYPES)[number];
+
+  @IsOptional() @IsEmail({}, { message: 'Informe um e-mail válido.' })
+  email?: string;
+
+  @IsOptional() @IsString()
+  phone?: string;
+}
+
+export class CreateConsumerUnitDto {
+  @IsString() @IsNotEmpty({ message: 'Selecione o consumidor.' })
+  consumerId!: string;
+
+  @IsString() @IsNotEmpty({ message: 'Selecione a distribuidora.' })
+  distributorId!: string;
+
+  @IsString() @IsNotEmpty({ message: 'Informe o número da unidade consumidora.' })
+  number!: string;
+
+  @IsOptional() @IsString()
+  address?: string;
+
+  @IsOptional() @IsIn(RECORD_STATUSES, { message: 'Status inválido.' })
+  status?: 'ACTIVE' | 'INACTIVE';
+}
+
+export class UpdateConsumerUnitDto {
+  @IsOptional() @IsString() @IsNotEmpty({ message: 'Selecione o consumidor.' })
+  consumerId?: string;
+
+  @IsOptional() @IsString() @IsNotEmpty({ message: 'Selecione a distribuidora.' })
+  distributorId?: string;
+
+  @IsOptional() @IsString() @IsNotEmpty({ message: 'Informe o número da unidade consumidora.' })
+  number?: string;
+
+  @IsOptional() @IsString()
+  address?: string;
 }

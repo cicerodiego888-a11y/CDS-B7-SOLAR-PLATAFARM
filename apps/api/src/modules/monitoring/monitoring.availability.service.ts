@@ -41,12 +41,12 @@ export class MonitoringAvailabilityService {
     if (parsed.plantId) {
       await this.access.assertPlant(parsed.plantId, user);
     }
-    const customerId = await this.access.customerScope(user);
+    const plantWhere = await this.access.buildPlantWhere(user);
     const inverters = await this.prisma.inverter.findMany({
       where: {
         ...(parsed.inverterId ? { id: parsed.inverterId } : {}),
         ...(parsed.plantId ? { plantId: parsed.plantId } : {}),
-        ...(customerId ? { plant: { customerId } } : {}),
+        ...(plantWhere ? { plant: plantWhere } : {}),
       },
       include: { manufacturerRef: true, bindings: true },
     });

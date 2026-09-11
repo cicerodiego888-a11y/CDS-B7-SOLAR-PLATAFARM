@@ -10,7 +10,7 @@ a { color: inherit; }
 .brand-mark { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(180deg, #2563eb, #1d4ed8); display: grid; place-items: center; font-weight: 800; }
 .brand strong { display: block; font-size: 16px; }
 .brand small { color: #93a0b5; letter-spacing: .14em; }
-.sidebar nav { display: grid; gap: 4px; flex: 1; }
+.sidebar nav { display: grid; gap: 4px; flex: 1; align-content: start; grid-auto-rows: max-content; }
 .nav-link { padding: 10px 12px; border-radius: 10px; text-decoration: none; color: #c5d0e0; }
 .nav-link:hover, .nav-link.active { background: #16345c; color: #fff; }
 .sidebar-footer { padding: 14px 12px; border-top: 1px solid #1d3a5f; color: #93a0b5; }
@@ -114,7 +114,7 @@ h1 { margin: 6px 0; font-size: 32px; }
 @media (max-width: 860px) {
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: sticky; top: 0; z-index: 5; padding: 16px; }
-  .sidebar nav { display: flex; gap: 6px; overflow-x: auto; flex: unset; }
+  .sidebar nav { display: flex; gap: 6px; overflow-x: auto; flex: unset; align-content: initial; }
   .nav-link { white-space: nowrap; }
   .sidebar-footer { display: none; }
   .content { padding: 20px; }

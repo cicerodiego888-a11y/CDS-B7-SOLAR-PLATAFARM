@@ -9,3 +9,13 @@ coverage
 .turbo
 *.log
 .DS_Store
+
+# Archives / local dumps (never push)
+*.zip
+B7.zip
+B7-SOLAR.zip
+
+# Build / IDE / Expo local
+*.tsbuildinfo
+apps/mobile/.expo/
+.expo/

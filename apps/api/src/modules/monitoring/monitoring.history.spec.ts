@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { MonitoringAccessService } from './monitoring.access';
 import { MonitoringHistoryService } from './monitoring.history.service';
 
@@ -22,7 +22,7 @@ describe('MonitoringHistoryService', () => {
     const access = {
       assertPlant: jest.fn(),
       assertInverter: jest.fn(),
-      customerScope: jest.fn().mockResolvedValue(null),
+      buildPlantWhere: jest.fn().mockResolvedValue(undefined),
     };
     const service = new MonitoringHistoryService(prisma as never, access as never);
     const result = await service.history({ period: 'today' }, { sub: 'u1', role: 'ADMIN', email: 'a' });
@@ -39,7 +39,7 @@ describe('MonitoringHistoryService', () => {
     } as never, {
       assertPlant: jest.fn().mockResolvedValue({ id: 'p1' }),
       assertInverter: jest.fn().mockResolvedValue({ id: 'i1', plantId: 'p1' }),
-      customerScope: jest.fn().mockResolvedValue(null),
+      buildPlantWhere: jest.fn().mockResolvedValue(undefined),
     } as never);
     await service.history({ period: 'today', plantId: 'p1', inverterId: 'i1' }, { sub: 'u1', role: 'ADMIN', email: 'a' });
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -50,23 +50,36 @@ describe('MonitoringHistoryService', () => {
 
 describe('MonitoringAccessService', () => {
   it('usina inexistente = 404', async () => {
-    const access = new MonitoringAccessService({ plant: { findUnique: jest.fn().mockResolvedValue(null) } } as never);
+    const authorization = { assertPlantAccess: jest.fn() };
+    const access = new MonitoringAccessService(
+      { plant: { findUnique: jest.fn().mockResolvedValue(null) } } as never,
+      authorization as never,
+    );
     await expect(access.assertPlant('missing', { sub: 'u', role: 'ADMIN', email: 'a' }))
       .rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('inversor inexistente = 404', async () => {
-    const access = new MonitoringAccessService({ inverter: { findUnique: jest.fn().mockResolvedValue(null) } } as never);
+    const authorization = { assertPlantAccess: jest.fn() };
+    const access = new MonitoringAccessService(
+      { inverter: { findUnique: jest.fn().mockResolvedValue(null) } } as never,
+      authorization as never,
+    );
     await expect(access.assertInverter('missing', { sub: 'u', role: 'ADMIN', email: 'a' }))
       .rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('CUSTOMER sem acesso à usina = 403', async () => {
-    const access = new MonitoringAccessService({
-      plant: { findUnique: jest.fn().mockResolvedValue({ id: 'p1', customerId: 'other' }) },
-      user: { findUnique: jest.fn().mockResolvedValue({ customerId: 'mine' }) },
-    } as never);
+  it('CUSTOMER sem acesso à usina = 403/404 via AuthorizationService', async () => {
+    const authorization = {
+      assertPlantAccess: jest.fn().mockRejectedValue(new NotFoundException('Usina não encontrada.')),
+    };
+    const access = new MonitoringAccessService(
+      {
+        plant: { findUnique: jest.fn().mockResolvedValue({ id: 'p1', customerId: 'other' }) },
+      } as never,
+      authorization as never,
+    );
     await expect(access.assertPlant('p1', { sub: 'u', role: 'CUSTOMER', email: 'c' }))
-      .rejects.toBeInstanceOf(ForbiddenException);
+      .rejects.toBeInstanceOf(NotFoundException);
   });
 });

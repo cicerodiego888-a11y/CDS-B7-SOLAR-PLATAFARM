@@ -54,4 +54,25 @@ describe('PlantsService', () => {
       if (!hasPermission('OPERADOR', 'PLANTS_CREATE')) throw new ForbiddenException('Acesso negado');
     }).toThrow(ForbiddenException);
   });
+
+  it('preserva campos legados distributor e consumerUnit no create', async () => {
+    prisma.customer.findUnique.mockResolvedValue({ id: 'c1' });
+    prisma.plant.create.mockResolvedValue({ id: 'p1', distributor: 'ENEL', consumerUnit: '123' });
+    await service.create({
+      customerId: 'c1',
+      name: 'Usina A',
+      installedPowerKw: 10,
+      distributor: 'ENEL',
+      consumerUnit: '123',
+    });
+    expect(prisma.plant.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        distributor: 'ENEL',
+        consumerUnit: '123',
+      }),
+      include: { customer: true },
+    });
+    expect(prisma.plant.create.mock.calls[0][0].data).not.toHaveProperty('distributorId');
+    expect(prisma.plant.create.mock.calls[0][0].data).not.toHaveProperty('consumerUnitId');
+  });
 });

@@ -10,6 +10,9 @@ export const NAV_ITEMS = [
   { href: '/inversores', label: 'Inversores', permission: 'INVERTERS_VIEW' },
   { href: '/alertas', label: 'Alertas', permission: 'ALERTS_VIEW' },
   { href: '/clientes', label: 'Clientes', permission: 'CUSTOMERS_VIEW' },
+  { href: '/distribuidoras', label: 'Distribuidoras', permission: 'DISTRIBUTORS_VIEW' },
+  { href: '/consumidores', label: 'Consumidores', permission: 'CONSUMERS_VIEW' },
+  { href: '/unidades-consumidoras', label: 'Unidades Consumidoras', permission: 'CONSUMER_UNITS_VIEW' },
   { href: '/relatorios', label: 'Relatórios', permission: 'REPORTS_VIEW' },
   { href: '/configuracoes', label: 'Configurações', permission: 'SETTINGS_VIEW' },
 ] as const;

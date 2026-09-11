@@ -1,0 +1,35 @@
+services:
+  postgres-e2e:
+    image: postgres:17-alpine
+    container_name: b7-solar-postgres-e2e
+    environment:
+      POSTGRES_USER: b7_e2e
+      POSTGRES_PASSWORD: b7_e2e_password
+      POSTGRES_DB: b7_solar_e2e
+    ports:
+      - "55432:5432"
+    volumes:
+      - b7_postgres_e2e_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U b7_e2e -d b7_solar_e2e"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  redis-e2e:
+    image: redis:7-alpine
+    container_name: b7-solar-redis-e2e
+    ports:
+      - "56379:6379"
+    volumes:
+      - b7_redis_e2e_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  b7_postgres_e2e_data:
+  b7_redis_e2e_data:

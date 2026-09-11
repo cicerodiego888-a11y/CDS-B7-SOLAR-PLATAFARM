@@ -8,8 +8,13 @@ import {
 } from '../integration.contract';
 import { AuxsolClient } from './auxsol.client';
 import { AuxsolContractUnavailableError } from './auxsol.errors';
-import { AuxsolFixtureReading, normalizeAuxsolFixture } from './auxsol.normalizer';
-import { createAuxsolTransport } from './auxsol.transport';
+import {
+  AuxsolFixtureReading,
+  isAuxsolOfficialRealtimePayload,
+  normalizeAuxsolFixture,
+  normalizeAuxsolRealtime,
+} from './auxsol.normalizer';
+import { createAuxsolTransport, resolveCollectSerialNumber } from './auxsol.transport';
 
 export class AuxsolAdapter implements MonitoringConnector {
   readonly provider = 'AUXSOL';
@@ -59,7 +64,20 @@ export class AuxsolAdapter implements MonitoringConnector {
   }
 
   async collect(config: ConnectorCollectContext = {}): Promise<NormalizedMonitoringData[]> {
+    if (this.client.mode === 'live') {
+      // Valida SN antes do HTTP (Inverter.serialNumber — ver resolveCollectSerialNumber).
+      resolveCollectSerialNumber(config);
+    }
+
     const payload = await this.client.collect(config);
+
+    if (this.client.mode === 'live' || isAuxsolOfficialRealtimePayload(payload)) {
+      return normalizeAuxsolRealtime(payload, {
+        inverterId: config.inverterId,
+        serialNumber: typeof config.serialNumber === 'string' ? config.serialNumber : undefined,
+      });
+    }
+
     return normalizeAuxsolFixture(payload as AuxsolFixtureReading, config.inverterId);
   }
 }

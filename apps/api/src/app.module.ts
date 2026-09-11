@@ -11,6 +11,10 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { InvertersModule } from './modules/inverters/inverters.module';
 import { EquipmentModule } from './modules/equipment/equipment.module';
 import { OperationsModule } from './modules/operations/operations.module';
+import { RateLimitModule } from './modules/auth/rate-limit.module';
+import { DistributorsModule } from './modules/distributors/distributors.module';
+import { ConsumersModule } from './modules/consumers/consumers.module';
+import { ConsumerUnitsModule } from './modules/consumer-units/consumer-units.module';
 
 @Module({
   imports: [
@@ -26,6 +30,10 @@ import { OperationsModule } from './modules/operations/operations.module';
     InvertersModule,
     EquipmentModule,
     OperationsModule,
+    RateLimitModule,
+    DistributorsModule,
+    ConsumersModule,
+    ConsumerUnitsModule,
   ],
 })
 export class AppModule {}

@@ -26,24 +26,29 @@ export class MonitoringPersistenceService {
         const idempotencyKey = buildIdempotencyKey(provider, inverterId, reading);
         const exists = await this.findExisting(tx, inverterId, provider, reading, idempotencyKey);
         if (exists) continue;
-        await tx.monitoringReading.create({
-          data: {
-            plantId,
-            inverterId,
-            collectedAt: reading.collectedAt as Date,
-            powerKw: reading.powerKw,
-            energyTodayKwh: reading.energyTodayKwh,
-            energyMonthKwh: reading.energyMonthKwh,
-            energyTotalKwh: reading.energyTotalKwh,
-            communicationOk: reading.communicationOk,
-            sourceProvider: provider,
-            idempotencyKey,
-            rawPayload: sanitizeRawPayload({
-              ...(reading.rawPayload && typeof reading.rawPayload === 'object' ? reading.rawPayload as Record<string, unknown> : {}),
-              normalizedStatus: reading.status,
-            }) as Prisma.InputJsonValue,
-          },
-        });
+        try {
+          await tx.monitoringReading.create({
+            data: {
+              plantId,
+              inverterId,
+              collectedAt: reading.collectedAt as Date,
+              powerKw: reading.powerKw,
+              energyTodayKwh: reading.energyTodayKwh,
+              energyMonthKwh: reading.energyMonthKwh,
+              energyTotalKwh: reading.energyTotalKwh,
+              communicationOk: reading.communicationOk,
+              sourceProvider: provider,
+              idempotencyKey,
+              rawPayload: sanitizeRawPayload({
+                ...(reading.rawPayload && typeof reading.rawPayload === 'object' ? reading.rawPayload as Record<string, unknown> : {}),
+                normalizedStatus: reading.status,
+              }) as Prisma.InputJsonValue,
+            },
+          });
+        } catch (error) {
+          if (!isUniqueConstraintError(error)) throw error;
+          continue;
+        }
         persisted += 1;
       }
     });
@@ -71,4 +76,8 @@ export class MonitoringPersistenceService {
       },
     });
   }
+}
+
+function isUniqueConstraintError(error: unknown): error is { code: 'P2002' } {
+  return Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === 'P2002');
 }

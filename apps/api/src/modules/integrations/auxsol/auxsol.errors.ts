@@ -33,8 +33,16 @@ export class AuxsolInvalidPayloadError extends Error {
   }
 }
 
+/** Erros HTTP de cliente não autenticáveis/não transitórios (400/403/404 etc.). */
+export class AuxsolRequestError extends Error {
+  constructor(message: string, readonly statusCode?: number, readonly code?: string) {
+    super(message);
+    this.name = 'AuxsolRequestError';
+  }
+}
+
 export function isTransientAuxsolError(error: unknown) {
   if (error instanceof AuxsolTransientError) return true;
-  if (error instanceof Error && /timeout|aborted|econnreset|econnrefused/i.test(error.message)) return true;
+  if (error instanceof Error && /timeout|aborted|econnreset|econnrefused|network/i.test(error.message)) return true;
   return false;
 }
